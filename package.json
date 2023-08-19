@@ -2,7 +2,6 @@
   "name": "sh0gi",
   "version": "1.0.0",
   "description": "logic for shogi game",
-  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
