@@ -1,4 +1,4 @@
-import { ListFormat } from "typescript";
+
 import { initial_records_positions, start_position } from "../src/utility";
 
 // custom types
@@ -25,6 +25,10 @@ export type PieceSymbol =
   | "+l";
 
 export type PiceMovements = Record<PieceSymbol, [number, number]>;
+type ShogiColumn = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i";
+type ShogiRow = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+type ShogiPosition = Record<`${ShogiRow}${ShogiColumn}`, Piece | null> ;
 
 // prettier-ignore
 export type Square =
@@ -40,8 +44,8 @@ export type Square =
 
 export type Piece = {
   color: Color;
-  type: PieceSymbol;
-  prmoted?: boolean;
+  symbol: PieceSymbol;
+  position: `${ShogiRow}${ShogiColumn}`
 };
 
 export type Move = {
@@ -103,118 +107,41 @@ const PieceMovements: Record<PieceSymbol, ShogiPieceMovement[]> = {
   "+l": ["vertical"],
 };
 
-type ShogiColumn = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i";
-type ShogiRow = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-type ShogiPosition = Record<`${ShogiRow}${ShogiColumn}`, PieceSymbol | null>;
-
 // Convert from FEN notation to ShogiPosition
-export function fenToShogiPosition(fen: string): ShogiPosition {
-  const [fenPosition] = fen.split(" ");
-  const rows = fenPosition.split("/");
-  const position: ShogiPosition = {
-    "1a": null,
-    "1b": null,
-    "1c": null,
-    "1d": null,
-    "1e": null,
-    "1f": null,
-    "1g": null,
-    "1h": null,
-    "1i": null,
-    "2a": null,
-    "2b": null,
-    "2c": null,
-    "2d": null,
-    "2e": null,
-    "2f": null,
-    "2g": null,
-    "2h": null,
-    "2i": null,
-    "3a": null,
-    "3b": null,
-    "3c": null,
-    "3d": null,
-    "3e": null,
-    "3f": null,
-    "3g": null,
-    "3h": null,
-    "3i": null,
-    "4a": null,
-    "4b": null,
-    "4c": null,
-    "4d": null,
-    "4e": null,
-    "4f": null,
-    "4g": null,
-    "4h": null,
-    "4i": null,
-    "5a": null,
-    "5b": null,
-    "5c": null,
-    "5d": null,
-    "5e": null,
-    "5f": null,
-    "5g": null,
-    "5h": null,
-    "5i": null,
-    "6a": null,
-    "6b": null,
-    "6c": null,
-    "6d": null,
-    "6e": null,
-    "6f": null,
-    "6g": null,
-    "6h": null,
-    "6i": null,
-    "7a": null,
-    "7b": null,
-    "7c": null,
-    "7d": null,
-    "7e": null,
-    "7f": null,
-    "7g": null,
-    "7h": null,
-    "7i": null,
-    "8a": null,
-    "8b": null,
-    "8c": null,
-    "8d": null,
-    "8e": null,
-    "8f": null,
-    "8g": null,
-    "8h": null,
-    "8i": null,
-    "9a": null,
-    "9b": null,
-    "9c": null,
-    "9d": null,
-    "9e": null,
-    "9f": null,
-    "9g": null,
-    "9h": null,
-    "9i": null,
-  };
+function fenToShogiPosition(fen: string): ShogiPosition {
+  const rows = fen.split('/');
+  const shogiPosition: ShogiPosition = initial_records_positions;
+  const ShogiColumns: ShogiColumn[] = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
 
-  rows.forEach((row, rowNum) => {
-    let colNum = 1;
+  rows.forEach((row, rowIndex) => {
+    let columnIndex = 0;
 
+    let promoted = false;
     for (const char of row) {
       if (/[1-9]/.test(char)) {
-        colNum += parseInt(char, 10);
+        columnIndex += parseInt(char);
       } else {
-        const key = `${rowNum + 1}${String.fromCharCode(
-          "a".charCodeAt(0) + colNum - 1
-        )}` as `${ShogiRow}${ShogiColumn}`;
-        position[key] = char as PieceSymbol;
-        colNum++;
+        const color = char === char.toLowerCase() ? 'w' : 'b';
+        let letter = char.toLowerCase();
+        if (  letter == '+') {
+          promoted = true; 
+          continue;
+        }
+        if (promoted == true) 
+        {
+          letter = '+${symbol}';
+          promoted = false;
+        }
+        const position = `${9 - rowIndex}${ShogiColumns[columnIndex]}` as `${ShogiRow}${ShogiColumn}`;
+        const symbol = letter as PieceSymbol;
+        shogiPosition[position] = { color, symbol, position };
+        columnIndex++;
       }
     }
   });
 
-  return position;
+  return shogiPosition;
 }
-
 // Convert from ShogiPosition to FEN notation
 export function shogiPositionToFen(position: ShogiPosition): string {
   let fen = "";
@@ -277,7 +204,7 @@ export class shogi {
       this._record_board = fenToShogiPosition(fen);
       this._turn = getTurnFromfen(fen);
       this._history_fen.push(fen);
-      this.update_position_count(fen);
+      this.updatePositionCount(fen);
     }
   }
 
@@ -290,17 +217,29 @@ export class shogi {
     this._match_status = "abort";
   }
 
-  private update_position_count(fen: string) {
+
+  // private functions 
+
+  private updatePositionCount(fen: string) {
     if (this._position_count[fen] == null) {
       this._position_count[fen] = 1;
     } else {
       this._position_count[fen]++;
     }
   }
-
-  private check_draws(fen: string) {
+  // simple helpers
+  private checkDraws(fen: string) {
     if (this._position_count[fen] >= 3) {
       this._match_status = "draw";
     }
   }
+
+ private  isValidRow(row: number): boolean {
+  return row >= 1 && row <= 9;
+}
+
+private  isValidColumnIndex(columnIndex: number): boolean {
+  return columnIndex >= 0 && columnIndex <= 9;
+}
+
 }
