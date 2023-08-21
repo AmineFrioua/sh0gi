@@ -118,7 +118,8 @@ export const WHITE = "w";
 export const BLACK = "b";
 
 export const PAWN = "p";
-export const KNIGHT = "n";
+export const KNIGHT = "kn";
+export const PROMOTED_KNIGHT = "+kn";
 export const BISHOP = "b";
 export const ROOK = "r";
 export const GOLD_GENERAL = "g";
@@ -128,5 +129,5 @@ export const LANCE = "l";
 export const PROMOTED_LANCE = "+l";
 export const DRAGON = "+r"; // promoted rook
 export const HORSE = "+b"; // promoted bishop
-export const TOKIN = "+p"; // promoted
+export const TOKIN = "+p"; // promoted pawn
 export const KING = "k";
