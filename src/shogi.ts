@@ -45,6 +45,7 @@ export type Piece = {
   color: Color;
   symbol: PieceSymbol;
   position: `${ShogiRow}${ShogiColumn}`;
+  promoted?: boolean;
 };
 
 export type Move = {
@@ -482,5 +483,28 @@ export class shogi {
     moves = filterValidMoves(moves, piece, this._record_board);
 
     return moves;
+  }
+
+  move_piece(piece: Piece, to: Square): void {
+    const from = piece.position;
+    const captured =
+      this._record_board[to] != null &&
+      this._record_board[to].color != piece.color
+        ? this._record_board[to].symbol
+        : null;
+    // check if promotion is possible
+    let promoted: boolean = false;
+    // update the board
+
+    this._record_board[to] = piece;
+    this._record_board[from] = null;
+    if (
+      promoted &&
+      piece.symbol in ["p", "l", "s", "g", "kn"] &&
+      piece.promoted == false
+    ) {
+      this._record_board[to].symbol = `+${piece.symbol}`;
+      this._record_board[to].promoted = true;
+    }
   }
 }
