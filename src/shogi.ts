@@ -371,7 +371,9 @@ export function filterValidMoves(
   record: ShogiPosition
 ): Square[] {
   if (piece.symbol in ["k", "kn", "+kn", "p", "+p", "g", "+g", "s", "+s"]) {
-    return moves.filter((move) => record[move] == null);
+    return moves.filter(
+      (move) => record[move] == null || record[move].color != piece.color
+    );
   } else {
     let validMoves = new Array();
 
