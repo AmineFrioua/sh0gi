@@ -46,6 +46,7 @@ export type Piece = {
   symbol: PieceSymbol;
   position: `${ShogiRow}${ShogiColumn}`;
   promoted?: boolean;
+  captured?: boolean;
 };
 
 export type Move = {
@@ -61,19 +62,6 @@ export type Move = {
   lan: string; // long algebraic notation
   before: string; // position before the move
   after: string; // position after the move
-};
-
-const BITS: Record<string, number> = {
-  NORMAL: 1,
-  CAPTURE: 2,
-  DROP: 4,
-  EP_CAPTURE: 8,
-  PAWN_PROMOTION: 16,
-  BISHOP_PROMOTION: 32,
-  LANCE_PROMOTION: 64,
-  KNIGHT_PROMOTION: 128,
-  ROOK_PROMOTION: 256,
-  SILVER_PROMOTION: 512,
 };
 
 type ShogiPieceMovement =
@@ -369,11 +357,11 @@ function getAllMovements(piece: Piece): Square[] {
 export function filterValidMoves(
   moves: Square[],
   piece: Piece,
-  record: ShogiPosition
+  record: ShogiPosition,
 ): Square[] {
   if (piece.symbol in ["k", "kn", "+kn", "p", "+p", "g", "+g", "s", "+s"]) {
     return moves.filter(
-      (move) => record[move] == null || record[move].color != piece.color
+      (move) => record[move] == null || record[move].color != piece.color,
     );
   } else {
     let validMoves = new Array();
@@ -388,7 +376,7 @@ export function filterValidMoves(
         currentCol,
         targetRow,
         targetCol,
-        record
+        record,
       );
 
       if (isPathClear) {
@@ -405,7 +393,7 @@ function checkPathClear(
   startCol: number,
   endRow: number,
   endCol: number,
-  record: ShogiPosition
+  record: ShogiPosition,
 ): boolean {
   const rowDelta = Math.sign(endRow - startRow);
   const colDelta = Math.sign(endCol - startCol);
@@ -434,6 +422,7 @@ export class shogi {
   private _history_records: Array<ShogiPosition> = [];
   private _history_fen: Array<string> = [];
   private _position_count: Record<string, number> = { start_position: 1 }; //using the fen string to check the positions
+  private _captured_pieces: Record<Color, Piece[]> = { w: [], b: [] };
   private _match_status: Status = "on";
 
   constructor(fen?: string) {
@@ -485,26 +474,95 @@ export class shogi {
     return moves;
   }
 
-  move_piece(piece: Piece, to: Square): void {
-    const from = piece.position;
-    const captured =
-      this._record_board[to] != null &&
-      this._record_board[to].color != piece.color
-        ? this._record_board[to].symbol
-        : null;
-    // check if promotion is possible
-    let promoted: boolean = false;
-    // update the board
+  // check emtpy squares to put a piece from captured on the board
+  // if the piece to add is a pawn, check if there is a pawn in the same column
+  get_empty_squares(piece: Piece, record: ShogiPosition): Square[] {
+    let empty_squares: Square[] = new Array<Square>();
 
-    this._record_board[to] = piece;
-    this._record_board[from] = null;
-    if (
-      promoted &&
-      piece.symbol in ["p", "l", "s", "g", "kn"] &&
-      piece.promoted == false
-    ) {
-      this._record_board[to].symbol = `+${piece.symbol}`;
-      this._record_board[to].promoted = true;
+    for (const square in record) {
+      if (record[square] == null) {
+        empty_squares.push(square as Square);
+      }
+    }
+
+    if (piece.color == "w") {
+      empty_squares = empty_squares.filter((square) => square.charAt(1) <= "6");
+    }
+
+    if (piece.color == "b") {
+      empty_squares = empty_squares.filter((square) => square.charAt(1) >= "4");
+    }
+
+    if (piece.symbol == "p") {
+      const rows = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+      const column = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+      let found = false;
+      rows.forEach((row) => {
+        column.forEach((column) => {
+          const checkSquare = `${row}${column}` as Square;
+          if (
+            record[checkSquare] != null &&
+            record[checkSquare].symbol == "p" &&
+            record[checkSquare].color == piece.color &&
+            found == false
+          ) {
+            found = true;
+          }
+
+          if (record[checkSquare] == null && found == true) {
+            empty_squares.filter((square) => square != checkSquare);
+          }
+        });
+        found = false;
+      });
+    }
+    return empty_squares;
+  }
+
+  move_piece(piece: Piece, to: Square): void {
+    if (piece.captured == false) {
+      const from = piece.position;
+      const moves = this.get_available_moves(from);
+      if (moves.includes(to)) {
+        const captured =
+          this._record_board[to] != null &&
+          this._record_board[to].color != piece.color
+            ? true
+            : false;
+
+        if (captured == true) {
+          const piece = this._record_board[to];
+          piece.captured = true;
+          piece.promoted = false;
+          this._captured_pieces[this._record_board[to].color].push(piece);
+        }
+        // check if promotion is possible
+        let promoted: boolean = false;
+        // update the board
+
+        this._record_board[to] = piece;
+        this._record_board[from] = null;
+        if (
+          promoted &&
+          piece.symbol in ["p", "l", "s", "g", "kn"] &&
+          piece.promoted == false
+        ) {
+          this._record_board[to].symbol = `+${piece.symbol}`;
+          this._record_board[to].promoted = true;
+        }
+      } else {
+        throw new Error("Invalid move");
+      }
+    } else {
+      const empty_squares = this.get_empty_squares(piece, this._record_board);
+      if (empty_squares.includes(to)) {
+        this._record_board[to] = piece;
+        this._captured_pieces[piece.color].filter(
+          (captured_piece) => captured_piece != piece,
+        );
+      } else {
+        throw new Error("Invalid move");
+      }
     }
   }
 }
