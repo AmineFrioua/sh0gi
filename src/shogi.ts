@@ -3,12 +3,19 @@ import { initial_records_positions, start_position } from "../src/utility";
 // custom types
 
 export type Color = "w" | "b";
-export type Status = "on" | "draw" | "abort" | "white wins" | "black wins";
+export type Status =
+  | "on"
+  | "draw"
+  | "abort"
+  | "white check"
+  | "black check"
+  | "white wins"
+  | "black wins";
 // prettier-ignore
 export type PieceSymbol =
   | "p"
   | "b"
-  | "kn"
+  | "n"
   | "r"
   | "k"
   | "g"
@@ -16,17 +23,16 @@ export type PieceSymbol =
   | "l"
   | "+p"
   | "+b"
-  | "+kn"
+  | "+n"
   | "+r"
   | "+q"
   | "+g"
   | "+s"
   | "+l";
 
-export type PiceMovements = Record<PieceSymbol, [number, number]>;
 type ShogiColumn = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i";
 type ShogiRow = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-type ShogiPosition = Record<Square, Piece | null>;
+export type ShogiPosition = Record<Square, Piece | null>;
 
 // prettier-ignore
 export type Square =
@@ -79,7 +85,7 @@ type ShogiPieceMovement =
 const PieceMovements: Record<PieceSymbol, ShogiPieceMovement[]> = {
   p: ["single_step"],
   b: ["diagonal"],
-  kn: ["knight"],
+  n: ["knight"],
   r: ["horizontal", "vertical"],
   k: ["single_step", "backward_step", "side_step", "front_edge", "back_edge"],
   g: ["single_step", "backward_step", "diagonal", "side_step"],
@@ -87,7 +93,7 @@ const PieceMovements: Record<PieceSymbol, ShogiPieceMovement[]> = {
   l: ["forward"],
   "+p": ["forward"],
   "+b": ["diagonal"],
-  "+kn": ["knight"],
+  "+n": ["knight"],
   "+r": ["side_step", "vertical"],
   "+q": ["single_step", "backward_step", "diagonal", "side_step", "vertical"],
   "+g": ["single_step", "backward_step", "diagonal", "side_step"],
@@ -105,10 +111,8 @@ export function isValidIndex(index: number): boolean {
   return index >= 0 && index <= 8;
 }
 
-// Convert from FEN notation to ShogiPosition
-function fenToShogiPosition(fen: string): ShogiPosition {
+export function fenToShogiPosition(fen: string): ShogiPosition {
   const rows = fen.split("/");
-  const shogiPosition: ShogiPosition = initial_records_positions;
   const ShogiColumns: ShogiColumn[] = [
     "a",
     "b",
@@ -121,35 +125,38 @@ function fenToShogiPosition(fen: string): ShogiPosition {
     "i",
   ];
 
-  rows.forEach((row, rowIndex) => {
+  return rows.reduce<ShogiPosition>((acc, row, rowIndex) => {
     let columnIndex = 0;
-
     let promoted = false;
+
     for (const char of row) {
       if (/[1-9]/.test(char)) {
         columnIndex += parseInt(char);
-      } else {
-        const color = char === char.toLowerCase() ? "w" : "b";
-        let letter = char.toLowerCase();
-        if (letter == "+") {
-          promoted = true;
-          continue;
-        }
-        if (promoted == true) {
-          letter = "+${symbol}";
-          promoted = false;
-        }
-        const position = `${9 - rowIndex}${
-          ShogiColumns[columnIndex]
-        }` as `${ShogiRow}${ShogiColumn}`;
-        const symbol = letter as PieceSymbol;
-        shogiPosition[position] = { color, symbol, position };
-        columnIndex++;
+        continue;
       }
-    }
-  });
 
-  return shogiPosition;
+      const color = char === char.toLowerCase() ? "w" : "b";
+      let letter = char.toLowerCase();
+
+      if (letter === "+") {
+        promoted = true;
+        continue;
+      }
+
+      const position = `${ShogiColumns[columnIndex]}${9 - rowIndex}` as Square;
+
+      if (promoted) {
+        letter = `+${letter}`;
+        promoted = false;
+      }
+
+      const symbol = letter as PieceSymbol;
+
+      acc[position] = { color, symbol, position };
+      columnIndex++;
+    }
+    return acc;
+  }, {} as ShogiPosition);
 }
 
 function squareToArray(position: string): [number, number] {
@@ -158,40 +165,51 @@ function squareToArray(position: string): [number, number] {
   return [row, column];
 }
 // Convert from ShogiPosition to FEN notation
-export function shogiPositionToFen(position: ShogiPosition): string {
+export function shogiPositionToFEN(shogiPosition: ShogiPosition): string {
+  const ShogiColumns: ShogiColumn[] = [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+  ];
+
   let fen = "";
 
-  for (let row = 1; row <= 9; row++) {
-    let emptyCount = 0;
-
-    for (const col of ["a", "b", "c", "d", "e", "f", "g", "h", "i"]) {
-      const key = `${row}${col}` as `${ShogiRow}${ShogiColumn}`;
-      const piece = position[key];
-
-      if (piece) {
-        if (emptyCount > 0) {
-          fen += emptyCount.toString();
-          emptyCount = 0;
-        }
-        fen += piece;
+  for (let row = 9; row >= 1; row--) {
+    let emptyCounter = 0;
+    for (const column of ShogiColumns) {
+      const position: Square = `${column}${row}` as Square;
+      const piece = shogiPosition[position];
+      if (!piece) {
+        emptyCounter++;
       } else {
-        emptyCount++;
+        if (emptyCounter > 0) {
+          fen += emptyCounter.toString();
+          emptyCounter = 0;
+        }
+        const color =
+          piece.color === "w"
+            ? piece.symbol.toLowerCase()
+            : piece.symbol.toUpperCase();
+        fen += color;
       }
     }
-
-    if (emptyCount > 0) {
-      fen += emptyCount.toString();
+    if (emptyCounter > 0) {
+      fen += emptyCounter.toString();
     }
-
-    if (row < 9) {
+    if (row > 1) {
       fen += "/";
     }
   }
 
   return fen;
 }
-
-function getTurnFromfen(fen: string): "b" | "w" {
+export function getTurnFromfen(fen: string): "b" | "w" {
   const parts = fen.split(" ");
 
   if (parts.length >= 2) {
@@ -234,8 +252,8 @@ function getAllMovements(piece: Piece): Square[] {
     piece.position.charCodeAt(0) - 97,
     parseInt(piece.position.charAt(1)) - 1,
   ];
-  const column = arrayNotation[0];
-  const row = arrayNotation[1];
+  const column = arrayNotation.arguments[0];
+  const row = arrayNotation.arguments[1];
   let newColumn: number;
   let newRow: number;
   movements.forEach((movement) => {
@@ -468,12 +486,13 @@ export class shogi {
 
     let opponent_moves: Square[] = new Array<Square>();
     for (const square in this._record_board) {
+      let index = square as Square;
       if (
-        this._record_board[square] != null &&
-        this._record_board[square].color != this._turn
+        this._record_board[index] != null &&
+        this._record_board[index]!.color != this._turn
       ) {
         opponent_moves = opponent_moves.concat(
-          getAllMovements(this._record_board[square])
+          getAllMovements(this._record_board[index] as Piece)
         );
       }
     }
@@ -487,13 +506,16 @@ export class shogi {
         } else {
           this._match_status = "black wins";
         }
-        return "checkmate";
       } else {
-        return "check";
+        if (this._turn == "w") {
+          this._match_status = "white check";
+        } else {
+          this._match_status = "black check";
+        }
       }
     }
 
-    return "no_check";
+    return "on";
   }
 
   // main functions
@@ -517,7 +539,7 @@ export class shogi {
     let empty_squares: Square[] = new Array<Square>();
 
     for (const square in record) {
-      if (record[square] == null) {
+      if (record[square as Square] == null) {
         empty_squares.push(square as Square);
       }
     }
@@ -559,18 +581,54 @@ export class shogi {
   private find_piece(color: Color, symbol: PieceSymbol): Piece | null {
     let piece: Piece | null = null;
     for (const square in this._record_board) {
+      const index = square as Square;
       if (
-        this._record_board[square] != null &&
-        this._record_board[square].color == color &&
-        this._record_board[square].symbol == symbol
+        this._record_board[index] != null &&
+        this._record_board[index]!.color == color &&
+        this._record_board[index]!.symbol == symbol
       ) {
-        piece = this._record_board[square];
+        piece = this._record_board[index];
       }
     }
     return piece;
   }
 
   public move_piece(piece: Piece, to: Square): void {
+    if (piece.color != this._turn) {
+      throw new Error("Not your turn");
+    }
+
+    switch (this._match_status) {
+      case "on":
+        this.move_any_piece(piece, to);
+
+        break;
+      case "white check":
+        if (piece.color == "w" && piece.symbol == "k") {
+          this.move_any_piece(piece, to);
+        } else {
+          throw new Error("Black king is in check, move it");
+        }
+        break;
+      case "black check":
+        if (piece.color == "b" && piece.symbol == "k") {
+          this.move_any_piece(piece, to);
+        } else {
+          throw new Error("White king is in check, move it");
+        }
+        break;
+      default:
+        break;
+    }
+
+    this._fen_board = shogiPositionToFEN(this._record_board);
+    this._history_fen.push(this._fen_board);
+    this.updatePositionCount(this._fen_board);
+    this.checkDraws(this._fen_board);
+    this.isCheckOrCheckMate();
+  }
+
+  private move_any_piece(piece: Piece, to: Square): void {
     if (piece.captured == false) {
       const from = piece.position;
       const moves = this.get_available_moves(from);
