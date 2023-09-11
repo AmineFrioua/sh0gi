@@ -222,7 +222,7 @@ export function getTurnFromfen(fen: string): "b" | "w" {
   return "b"; // return inital start black
 }
 
-export function get_piece_from_notation(notation: string): Piece | null {
+export function getPieceFromNotation(notation: string): Piece | null {
   const regex = /^([wb])(\+?[KGSNRYPBkgsnrypb])([a-i][1-9])$/;
   const match = notation.match(regex);
 
@@ -479,7 +479,7 @@ export class shogi {
 
   private isCheckOrCheckMate() {
     let king: Piece | null = null;
-    king = this.find_piece(this._turn, "k");
+    king = this.findPiece(this._turn, "k");
     if (king == null) {
       throw new Error("King not found");
     }
@@ -519,9 +519,28 @@ export class shogi {
   }
 
   // main functions
-  public get_available_moves(notation: string): Square[] {
+  public printShogiBoard(): void {
+    const fen = this._fen_board;
+    const rows = fen.split("/");
+
+    rows.forEach((row, rowIndex) => {
+      let rowString = "";
+      for (const char of row) {
+        if (/[1-9]/.test(char)) {
+          rowString += ".".repeat(parseInt(char));
+        } else {
+          const letter = char === char.toLowerCase() ? "p" : "P"; // "p" for player 2 and "P" for player 1
+          rowString += letter;
+        }
+      }
+      console.log(`(${9 - rowIndex}) ${rowString}`); // 9-rowIndex: To start row numbers from bottom
+    });
+    console.log("  abcdefghi"); // Column labels
+  }
+
+  public getAvailableMovesFromNotation(notation: string): Square[] {
     let moves: Square[];
-    const piece = get_piece_from_notation(notation);
+    const piece = getPieceFromNotation(notation);
     if (piece == null) {
       throw new Error("Invalid notation");
     }
@@ -533,23 +552,24 @@ export class shogi {
     return moves;
   }
 
+  public getAvailableMovesFromPiece(piece: Piece): Square[] {
+    let moves: Square[];
+    moves = getAllMovements(piece);
+
+    moves = filterValidMoves(moves, piece, this._record_board);
+
+    return moves;
+  }
+
   // check emtpy squares to put a piece from captured on the board
   // if the piece to add is a pawn, check if there is a pawn in the same column
-  private get_empty_squares(piece: Piece, record: ShogiPosition): Square[] {
+  private getEmtpySquare(piece: Piece, record: ShogiPosition): Square[] {
     let empty_squares: Square[] = new Array<Square>();
 
     for (const square in record) {
       if (record[square as Square] == null) {
         empty_squares.push(square as Square);
       }
-    }
-
-    if (piece.color == "w") {
-      empty_squares = empty_squares.filter((square) => square.charAt(1) <= "6");
-    }
-
-    if (piece.color == "b") {
-      empty_squares = empty_squares.filter((square) => square.charAt(1) >= "4");
     }
 
     if (piece.symbol == "p") {
@@ -578,7 +598,7 @@ export class shogi {
     return empty_squares;
   }
 
-  private find_piece(color: Color, symbol: PieceSymbol): Piece | null {
+  private findPiece(color: Color, symbol: PieceSymbol): Piece | null {
     let piece: Piece | null = null;
     for (const square in this._record_board) {
       const index = square as Square;
@@ -593,26 +613,37 @@ export class shogi {
     return piece;
   }
 
-  public move_piece(piece: Piece, to: Square): void {
+  public movePiece(piece: Piece, to: Square): void {
     if (piece.color != this._turn) {
       throw new Error("Not your turn");
+    }
+    const moves = this.getAvailableMovesFromPiece(piece);
+    const empty_squares = this.getEmtpySquare(piece, this._record_board);
+
+    if (
+      moves.length == 0 &&
+      (empty_squares.length == 0 ||
+        this._captured_pieces[this._turn].length > 0)
+    ) {
+      this._match_status = "draw";
+      return;
     }
 
     switch (this._match_status) {
       case "on":
-        this.move_any_piece(piece, to);
+        this.moveAnyPiece(moves, piece, to, empty_squares);
 
         break;
       case "white check":
         if (piece.color == "w" && piece.symbol == "k") {
-          this.move_any_piece(piece, to);
+          this.moveAnyPiece(moves, piece, to, empty_squares);
         } else {
           throw new Error("Black king is in check, move it");
         }
         break;
       case "black check":
         if (piece.color == "b" && piece.symbol == "k") {
-          this.move_any_piece(piece, to);
+          this.moveAnyPiece(moves, piece, to, empty_squares);
         } else {
           throw new Error("White king is in check, move it");
         }
@@ -628,10 +659,13 @@ export class shogi {
     this.isCheckOrCheckMate();
   }
 
-  private move_any_piece(piece: Piece, to: Square): void {
+  private moveAnyPiece(
+    moves: Square[],
+    piece: Piece,
+    to: Square,
+    empty_squares: Square[]
+  ): void {
     if (piece.captured == false) {
-      const from = piece.position;
-      const moves = this.get_available_moves(from);
       if (moves.includes(to)) {
         const captured =
           this._record_board[to] != null &&
@@ -650,7 +684,7 @@ export class shogi {
         // update the board
 
         this._record_board[to] = piece;
-        this._record_board[from] = null;
+        this._record_board[piece.position] = null;
         if (
           promoted &&
           piece.symbol in ["p", "l", "s", "g", "kn"] &&
@@ -663,7 +697,6 @@ export class shogi {
         throw new Error("Invalid move");
       }
     } else {
-      const empty_squares = this.get_empty_squares(piece, this._record_board);
       if (empty_squares.includes(to)) {
         this._record_board[to] = piece;
         this._captured_pieces[piece.color].filter(
